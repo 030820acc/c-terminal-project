@@ -1,6 +1,5 @@
 /*** includes ***/
 
-#include <ctype.h>//iscntrl()
 #include <errno.h>//errno, EAGAIN
 #include <stdio.h>//printf(), perror()
 #include <stdlib.h>//exit()
@@ -17,7 +16,10 @@ struct termios orig_termios;
 
 /*** terminal ***/
 
-void die(const char *s) {//kills processes if there is an error
+void die(const char *s) {//sets errno to the string given and then kills the process with a 1 exit code for failure and the message
+	write(STDOUT_FILENO, "\x1b[2J", 4);
+	write(STDOUT_FILENO, "\x1b[H", 3);
+
 	perror(s);
 	exit(1);
 }
@@ -43,20 +45,55 @@ void enableRawMode() {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
 
+char editorReadKey() {//reads key and returns it c
+	int nread;
+	char c;
+	while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
+		if (nread == -1 && errno != EAGAIN) die("read");
+	}
+	return c;
+}
+
+/*** input ***/
+
+void editorProcessKeypress() {//checks for ctrl+q
+	char c = editorReadKey();
+
+	switch (c) {
+		case CTRL_KEY('q'):
+			write(STDOUT_FILENO, "\x1b[2J", 4);
+			write(STDOUT_FILENO, "\x1b[H", 3);
+			exit(0);
+			break;
+	}
+}
+
+/*** output ***/
+
+void editorDrawRows() {
+	int y;
+	for (y = 0; y < 24; y++) {
+		write(STDOUT_FILENO, "~\r\n", 3);
+	}
+}
+
+void editorRefreshScreen() {//clears screen and resets cursor
+	write(STDOUT_FILENO, "\x1b[2J", 4);
+	write(STDOUT_FILENO, "\x1b[H", 3);
+
+	editorDrawRows();
+
+	write(STDOUT_FILENO, "\x1b[H", 3);
+}
+
 /*** init ***/
 
 int main() {
   enableRawMode();
 
-	while (1) {
-		char c = '\0';
-		if (read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN) die("read");//in cygwin read outputs -1 like a failure and changes errno to EAGAIN when it returns instead of returning 0. but it also returns -1 on failure still. have to protect against this
-		if (iscntrl(c)) {
-			printf("%d\r\n", c);
-		} else {
-			printf("%d ('%c')\r\n", c, c);//carriage return and new line are both required to move the cursor down and left. we killed the auto return that normally comes with \n
-		}
-		if (c == CTRL_KEY('q')) break;//end program on ctrl+q
+	while (1) {//on start clear screen and check for keypress and process
+		editorRefreshScreen();
+		editorProcessKeypress();
 	}
 
   return 0;
