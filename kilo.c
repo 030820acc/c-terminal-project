@@ -7,6 +7,7 @@
 #include <stdlib.h>//exit()
 #include <string.h>
 #include <sys/ioctl.h>//ioctl, winsize
+#include <sys/types.h>
 #include <termios.h> //struct termios, tcgetattr(), tcsetattr(), ECHO etc., TCSAFLUSH
 #include <unistd.h> //read, STDIN_FILENO
 
@@ -30,10 +31,17 @@ enum editorKey {
 
 /*** data ***/
 
+typedef struct erow {
+	int size;
+	char *chars;
+} erow;
+
 struct editorConfig {
 	int cx, cy;
 	int screenrows;
 	int screencols;
+	int numrows;
+	erow row;
 	struct termios orig_termios;
 };
 
@@ -150,6 +158,19 @@ int getWindowSize(int *rows, int *cols) {
 		*rows = ws.ws_row;
 		return 0;
 	}
+}
+
+/*** file i/o ***/
+
+void editorOpen() {
+	char *line = "Hello, World!";
+	ssize_t linelen = 13;
+
+	E.row.size = linelen;
+	E.row.chars = malloc(linelen + 1);
+	memcpy(E.row.chars, line, linelen);
+	E.row.chars[linelen] = '\0';
+	E.numrows = 1;
 }
 
 /*** append buffer ***/
@@ -287,6 +308,7 @@ void editorRefreshScreen() {//clears screen and resets cursor
 void initEditor() {
 	E.cx = 0;
 	E.cy = 0;
+	E.numrows = 0;
 
 	if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
@@ -294,6 +316,7 @@ void initEditor() {
 int main() {
   enableRawMode();
 	initEditor();
+	editorOpen();
 
 	while (1) {//on start clear screen and check for keypress and process
 		editorRefreshScreen();
